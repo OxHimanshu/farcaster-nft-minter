@@ -5,22 +5,12 @@ import type { FrameSignaturePacket } from './types'
 
 const app = new Hono()
 
-const endpoint = 'https://api.subquery.network/sq/subquery/subquery-mainnet' // Replace with your actual URL
+const endpoint = 'https://api.subquery.network/sq/OxHimanshu/frame-subql' // Replace with your actual URL
 const DEFAULT_IMAGE = 'https://imageplaceholder.net/600x400/7b68ee/ffffff?text='
+const CONTRACT_ADDRESS = '0xe6BBD0c6E14AEbe890367619098898Ed1c17f16E'
+const BASE_URL=''
 
-interface Era {
-  id: number
-  createdBlock: number
-}
-
-function numberToHexByte(num: number): string {
-  if (num < 0 || num > 255) {
-    throw new Error('Number out of byte range (0-255)')
-  }
-  return `0x${num.toString(16).padStart(2, '0')}`
-}
-
-function returnHTML(imageLink: string) {
+function returnHome(imageLink: string) {
   return html`
     <html lang="en">
       <head>
@@ -28,8 +18,12 @@ function returnHTML(imageLink: string) {
         <meta property="fc:frame" content="vNext" />
         <meta property="fc:frame:image" content="${imageLink}" />
         <meta property="fc:frame:image:aspect_ratio" content="1.91:1" />
-        <meta property="fc:frame:input:text" content="Check SubQuery Era" />
-        <meta property="fc:frame:button:1" content="Submit" />
+        <meta property="fc:frame:button:1" content="Mint" />
+        <meta name="fc:frame:button:1:action" content="mint" />
+        <meta
+          name="fc:frame:button:1:target"
+          content="eip155:84532:${CONTRACT_ADDRESS}"
+        />
         <title>Farcaster Frames</title>
       </head>
       <body>
@@ -38,6 +32,46 @@ function returnHTML(imageLink: string) {
       </body>
     </html>
   `
+}
+
+function showNFT(ipfs: string) {
+  return html`
+    <html lang="en">
+      <head>
+        <meta property="og:image" content="${ipfs}" />
+        <meta property="fc:frame" content="vNext" />
+        <meta property="fc:frame:image" content="${ipfs}" />
+        <meta property="fc:frame:image:aspect_ratio" content="1.91:1" />
+        <meta property="fc:frame:button:1" content="Show All" />
+        <title>Farcaster Frames</title>
+      </head>
+      <body>
+        <h1>Hello Farcaster!</h1>
+        <p className="mb-10">Refresh browser to refresh image</p>
+      </body>
+    </html>
+  `
+}
+
+function listNFTs(ipfs: string, counter: BigInteger) {
+  return html`
+  <html lang="en">
+    <head>
+      <meta property="og:image" content="${ipfs}" />
+      <meta property="fc:frame" content="vNext" />
+      <meta property="fc:frame:image" content="${ipfs}" />
+      <meta property="fc:frame:image:aspect_ratio" content="1.91:1" />
+      <meta property="fc:frame:button:1" content="Back" />
+      <meta property="fc:frame:button:2" content="Next" />
+      <meta name="fc:frame:post_url" content="${BASE_URL}/nfts?counter=${counter}">
+      <title>Farcaster Frames</title>
+    </head>
+    <body>
+      <h1>Hello Farcaster!</h1>
+      <p className="mb-10">Refresh browser to refresh image</p>
+    </body>
+  </html>
+`
 }
 
 async function fetchGraphQL(query: string) {
@@ -55,76 +89,57 @@ async function fetchGraphQL(query: string) {
   return data
 }
 
-app.get('/', async (c) => {
-  try {
-    const query = `query {
-      eras (orderBy: ID_DESC first: 1) {
-        nodes {
-          id
-          startTime
-          endTime
-          createdBlock
-          lastEvent
-        }
-      }
-    }`
-    const data = await fetchGraphQL(query)
-    const node = data.data.eras.nodes[0]
+async function fetchImageIPFS(url: string) {
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+  })
 
-    if (node) {
-      const era: Era = {
-        id: parseInt(node.id, 16),
-        createdBlock: node.createdBlock,
-      }
-
-      const frameImage = `${DEFAULT_IMAGE}Current++SubQuery+Era:+${era.id}`
-      return c.html(returnHTML(frameImage))
-    } else {
-      const frameImage = `${DEFAULT_IMAGE}Invalid+response`
-      return c.html(returnHTML(frameImage))
-    }
-  } catch (error) {
-    console.error('Fetch error:', error)
-    const frameImage = `${DEFAULT_IMAGE}Error+while+fetching`
-    return c.html(returnHTML(frameImage))
+  if (!response.ok) {
+    throw new Error('Network response was not ok')
   }
+
+  const data = await response.json()
+  return data["image"]
+}
+
+app.get('/', async (c) => {
+  console.log(process.env.API_URL)
+  const frameImage = `${DEFAULT_IMAGE}Click below to mint a NFT`
+  return c.html(returnHome(frameImage))
 })
 
 app.post('/', async (c) => {
   try {
     const body = await c.req.json<FrameSignaturePacket>()
     const { inputText } = body.untrustedData
-
-    if (!Number.isInteger(Number(inputText))) {
-      const frameImage = `${DEFAULT_IMAGE}Invalid+value+entered`
-      return c.html(returnHTML(frameImage))
-    }
-
     const query = `query {
-      era(id: "${numberToHexByte(Number(inputText))}") {
-        startTime
-        nodeId
-        lastEvent
-        id
-        endTime
-        createdBlock
+      minters(filter: {user: {equalTo: "${body.untrustedData.address}"}} last: 1) {
+        edges {
+          node {
+            id
+            user
+            tokenURI
+          }
+        }
       }
     }`
 
     const data = await fetchGraphQL(query)
-    const node = data.data.era
+    const node = data.data.minters.edges
 
     if (!node) {
-      const frameImage = `${DEFAULT_IMAGE}Era+with+specified+id+was+not+found`
-      return c.html(returnHTML(frameImage))
+      const frameImage = `${DEFAULT_IMAGE}Failed to mint NFT`
+      return c.html(showNFT(frameImage))
     }
 
-    const frameImage = `${DEFAULT_IMAGE}Era+${Number(inputText)}+started+on+block+${node.createdBlock}`
-    return c.html(returnHTML(frameImage))
+    const ipfs = await fetchImageIPFS(node.id["tokenURI"])
+
+    return c.html(showNFT(ipfs))
   } catch (error) {
     console.error('Fetch error:', error)
-    const frameImage = `${DEFAULT_IMAGE}Error+during+Era+data+fetching`
-    return c.html(returnHTML(frameImage))
+    const frameImage = `${DEFAULT_IMAGE}Failed to mint NFT`
+    return c.html(showNFT(frameImage))
   }
 })
 
