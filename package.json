@@ -16,7 +16,10 @@
   },
   "dependencies": {
     "@hono/node-server": "1.11.0",
-    "hono": "4.2.7"
+    "ethers": "^6.13.1",
+    "hono": "4.2.7",
+    "js-ipfs-fetch": "^5.0.0",
+    "web3": "^4.11.0"
   },
   "devDependencies": {
     "@types/eslint": "8.56.6",
